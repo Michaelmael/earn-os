@@ -9,6 +9,7 @@ interface User {
   lastLogin: string;
   visitCount: number;
   isAdmin: boolean;
+  createdAt: string;
 }
 
 export default function AdminPage() {
@@ -16,6 +17,9 @@ export default function AdminPage() {
   const [activeUsers, setActiveUsers] = useState<User[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [newPassword, setNewPassword] = useState('');
+  const [passwordMsg, setPasswordMsg] = useState('');
+  const [passwordErr, setPasswordErr] = useState('');
   const router = useRouter();
 
   useEffect(() => {
@@ -29,12 +33,26 @@ export default function AdminPage() {
   }, []);
 
   const fetchUsers = async () => {
-    try {
-      const res = await fetch('/api/admin/users');
-      const data = await res.json();
-      setUsers(data.allUsers || []);
-      setActiveUsers(data.activeUsers || []);
-    } catch {}
+    const res = await fetch('/api/admin/users');
+    const data = await res.json();
+    setUsers(data.allUsers || []);
+    setActiveUsers(data.activeUsers || []);
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordMsg(''); setPasswordErr('');
+    const res = await fetch('/api/admin/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ newPassword }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setPasswordMsg('Password changed! Use it next time you log in.');
+    } else {
+      setPasswordErr(data.error);
+    }
   };
 
   if (loading) return <div className="min-h-screen bg-gray-950 text-white p-8">Loading...</div>;
@@ -43,10 +61,11 @@ export default function AdminPage() {
   return (
     <main className="min-h-screen bg-gray-950 text-white p-4 md:p-8">
       <header className="mb-8 flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-green-400">Admin Dashboard</h1>
+        <h1 className="text-3xl font-bold text-green-400">🐉 Admin Dashboard</h1>
         <button onClick={() => { localStorage.removeItem('earnos_user'); router.push('/login'); }}
           className="px-4 py-2 bg-red-700 hover:bg-red-600 rounded text-sm">Logout</button>
       </header>
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
         <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
           <p className="text-gray-400 text-sm">Total Users</p>
@@ -61,19 +80,37 @@ export default function AdminPage() {
           <p className="text-3xl font-bold text-blue-400">{users.reduce((s, u) => s + u.visitCount, 0)}</p>
         </div>
       </div>
+
+      {/* Change Password */}
+      <div className="bg-gray-900 border border-gray-800 rounded-lg p-6 mb-8">
+        <h2 className="text-xl font-semibold mb-4">🔐 Change Admin Password</h2>
+        <p className="text-gray-400 text-sm mb-3">Can only be changed once every 30 days.</p>
+        <form onSubmit={handleChangePassword} className="flex gap-3">
+          <input type="password" placeholder="New password (min 8 chars)" value={newPassword}
+            onChange={e => setNewPassword(e.target.value)}
+            className="flex-1 p-3 bg-gray-800 border border-gray-700 rounded text-white" required />
+          <button type="submit" className="px-6 py-3 bg-yellow-700 hover:bg-yellow-600 rounded font-semibold transition">
+            Change
+          </button>
+        </form>
+        {passwordMsg && <p className="mt-3 text-green-400 text-sm">{passwordMsg}</p>}
+        {passwordErr && <p className="mt-3 text-red-400 text-sm">{passwordErr}</p>}
+      </div>
+
+      {/* Users Table */}
       <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
         <h2 className="text-xl font-semibold p-4 border-b border-gray-800">All Users</h2>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead><tr className="text-left text-gray-400 text-sm border-b border-gray-800">
-              <th className="p-3">Email</th><th className="p-3">Verified</th>
-              <th className="p-3">Last Login</th><th className="p-3">Visits</th><th className="p-3">Admin</th>
+              <th className="p-3">Email</th><th className="p-3">Verified</th><th className="p-3">Joined</th><th className="p-3">Last Login</th><th className="p-3">Visits</th><th className="p-3">Admin</th>
             </tr></thead>
             <tbody>
-              {users.map((u) => (
+              {users.map(u => (
                 <tr key={u.email} className="border-b border-gray-800 hover:bg-gray-800">
                   <td className="p-3">{u.email}</td>
                   <td className="p-3">{u.verified ? '✅' : '❌'}</td>
+                  <td className="p-3 text-gray-400 text-sm">{new Date(u.createdAt).toLocaleDateString()}</td>
                   <td className="p-3 text-gray-400 text-sm">{new Date(u.lastLogin).toLocaleString()}</td>
                   <td className="p-3">{u.visitCount}</td>
                   <td className="p-3">{u.isAdmin ? '👑' : '-'}</td>

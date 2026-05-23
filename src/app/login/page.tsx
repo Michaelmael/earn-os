@@ -6,18 +6,17 @@ import { useRouter } from 'next/navigation';
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [mode, setMode] = useState<'login' | 'signup' | 'reset'>('login');
+  const [mode, setMode] = useState<'login' | 'signup' | 'verify' | 'reset'>('login');
   const [isAdmin, setIsAdmin] = useState(false);
   const [resetCode, setResetCode] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [dragonPos, setDragonPos] = useState({ x: 0, y: 0 });
   const [breathingFire, setBreathingFire] = useState(false);
   const [loginSuccess, setLoginSuccess] = useState(false);
   const router = useRouter();
-  const containerRef = useRef<HTMLDivElement>(null);
 
-  // Dragon follows cursor
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       setDragonPos({ x: e.clientX, y: e.clientY });
@@ -47,6 +46,7 @@ export default function LoginPage() {
         }, 1500);
       } else {
         setError(data.error);
+        if (data.error?.includes('verify')) setMode('verify');
       }
     } else if (mode === 'signup') {
       const res = await fetch('/api/auth/signup', {
@@ -56,11 +56,28 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setMessage('Account created! You can now log in.');
-        setMode('login');
+        setMessage('Verification code sent! Check console or email.');
+        setMode('verify');
       } else {
         setError(data.error);
       }
+    }
+  };
+
+  const handleVerifyEmail = async (e: React.FormEvent) => {
+    e.preventDefault(); setMessage(''); setError('');
+    const res = await fetch('/api/auth/verify-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code: verificationCode }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setMessage('Email verified! You can now log in.');
+      setMode('login');
+      setVerificationCode('');
+    } else {
+      setError(data.error);
     }
   };
 
@@ -93,52 +110,35 @@ export default function LoginPage() {
   };
 
   return (
-    <main
-      ref={containerRef}
-      className="min-h-screen bg-gray-950 text-white flex items-center justify-center p-4 overflow-hidden relative cursor-none"
-    >
-      {/* Dragon that follows cursor */}
+    <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center p-4 overflow-hidden cursor-none">
+      {/* Dragon */}
       <div
         className="fixed pointer-events-none z-50 transition-transform duration-75"
-        style={{
-          left: dragonPos.x - 30,
-          top: dragonPos.y - 30,
-          transform: `scale(${loginSuccess ? 1.5 : 1})`,
-        }}
+        style={{ left: dragonPos.x - 30, top: dragonPos.y - 30, transform: `scale(${loginSuccess ? 1.5 : 1})` }}
       >
         <div className="text-5xl animate-bounce relative">
           🐉
-          {/* Fire breath on success */}
           {breathingFire && (
             <div className="absolute -right-16 top-2 animate-ping">
               <span className="text-3xl">🔥</span>
               <span className="text-3xl absolute -right-6 top-0">🔥</span>
               <span className="text-2xl absolute -right-10 -top-2">🔥</span>
-              <span className="text-xl absolute -right-14 top-1">💨</span>
             </div>
           )}
         </div>
       </div>
 
-      {/* Floating embers in background */}
+      {/* Embers */}
       <div className="fixed inset-0 pointer-events-none">
         {[...Array(20)].map((_, i) => (
-          <div
-            key={i}
-            className="absolute text-xl animate-pulse"
-            style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 3}s`,
-              opacity: 0.3,
-            }}
-          >
+          <div key={i} className="absolute text-xl animate-pulse"
+            style={{ left: `${Math.random() * 100}%`, top: `${Math.random() * 100}%`, animationDelay: `${Math.random() * 3}s`, opacity: 0.3 }}>
             {['✨', '💫', '⭐', '🔥', '💨'][i % 5]}
           </div>
         ))}
       </div>
 
-      {/* Login Card */}
+      {/* Card */}
       <div className="bg-gray-900 border border-gray-800 rounded-lg p-8 w-full max-w-md relative z-10 shadow-2xl shadow-green-900/20">
         <div className="text-center mb-6">
           <span className="text-6xl">🐉</span>
@@ -146,28 +146,62 @@ export default function LoginPage() {
           <p className="text-gray-500 text-sm mt-1">The dragon guards your crypto wealth</p>
         </div>
 
-        {mode !== 'reset' ? (
+        {mode === 'verify' ? (
+          <>
+            <h2 className="text-xl mb-4 text-center">Verify Email</h2>
+            <form onSubmit={handleVerifyEmail} className="space-y-4">
+              <p className="text-sm text-gray-400 text-center">Enter the 6-digit code sent to {email}</p>
+              <input type="text" placeholder="000000" value={verificationCode}
+                onChange={e => setVerificationCode(e.target.value)}
+                className="w-full p-3 bg-gray-800 border border-gray-700 rounded text-white text-center text-2xl tracking-widest" required />
+              <button type="submit" className="w-full p-3 bg-green-700 hover:bg-green-600 rounded font-semibold transition">
+                ✅ Verify Email
+              </button>
+            </form>
+            <p className="text-center mt-4">
+              <button onClick={() => setMode('signup')} className="text-green-400 hover:underline text-sm">Back to Sign Up</button>
+            </p>
+          </>
+        ) : mode === 'reset' ? (
+          <>
+            <h2 className="text-xl mb-4 text-center">Reset Password</h2>
+            {!resetCode ? (
+              <form onSubmit={handleResetRequest} className="space-y-4">
+                <input type="email" placeholder="Email" value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  className="w-full p-3 bg-gray-800 border border-gray-700 rounded text-white" required />
+                <button type="submit" className="w-full p-3 bg-yellow-700 hover:bg-yellow-600 rounded font-semibold transition">
+                  🪄 Send Reset Code
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleResetConfirm} className="space-y-4">
+                <p className="text-sm text-gray-400">Enter code sent to {email}</p>
+                <input type="text" placeholder="e.g. 2000a" value={resetCode}
+                  onChange={e => setResetCode(e.target.value)}
+                  className="w-full p-3 bg-gray-800 border border-gray-700 rounded text-white" required />
+                <button type="submit" className="w-full p-3 bg-yellow-700 hover:bg-yellow-600 rounded font-semibold transition">
+                  🐉 Verify Code
+                </button>
+              </form>
+            )}
+            <p className="text-center mt-4">
+              <button onClick={() => { setMode('login'); setResetCode(''); }} className="text-green-400 hover:underline text-sm">Back to Sign In</button>
+            </p>
+          </>
+        ) : (
           <>
             <h2 className="text-xl mb-4 text-center">
               {isAdmin ? '🔥 Admin Lair' : mode === 'signup' ? 'Join the Hoard' : 'Enter the Lair'}
             </h2>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <input
-                type="email" placeholder="Email"
-                value={email} onChange={e => setEmail(e.target.value)}
-                className="w-full p-3 bg-gray-800 border border-gray-700 rounded text-white focus:border-green-500 focus:outline-none transition"
-                required
-              />
-              <input
-                type="password" placeholder={mode === 'signup' ? 'Password (min 5 chars)' : 'Password'}
+              <input type="email" placeholder="Email" value={email}
+                onChange={e => setEmail(e.target.value)}
+                className="w-full p-3 bg-gray-800 border border-gray-700 rounded text-white focus:border-green-500 focus:outline-none transition" required />
+              <input type="password" placeholder={mode === 'signup' ? 'Password (min 5 chars)' : 'Password'}
                 value={password} onChange={e => setPassword(e.target.value)}
-                className="w-full p-3 bg-gray-800 border border-gray-700 rounded text-white focus:border-green-500 focus:outline-none transition"
-                required
-              />
-              <button
-                type="submit"
-                className="w-full p-3 bg-green-700 hover:bg-green-600 rounded font-semibold transition text-lg"
-              >
+                className="w-full p-3 bg-gray-800 border border-gray-700 rounded text-white focus:border-green-500 focus:outline-none transition" required />
+              <button type="submit" className="w-full p-3 bg-green-700 hover:bg-green-600 rounded font-semibold transition text-lg">
                 {mode === 'signup' ? '🐣 Hatch Account' : '🐉 Enter Lair'}
               </button>
             </form>
@@ -182,50 +216,13 @@ export default function LoginPage() {
               </button>
             </div>
             <p className="text-center mt-2">
-              <button onClick={() => setMode('reset')}
-                className="text-gray-400 hover:underline text-sm">Forgot password?</button>
-            </p>
-          </>
-        ) : (
-          <>
-            <h2 className="text-xl mb-4 text-center">Reset Password</h2>
-            {!resetCode ? (
-              <form onSubmit={handleResetRequest} className="space-y-4">
-                <input type="email" placeholder="Email" value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  className="w-full p-3 bg-gray-800 border border-gray-700 rounded text-white" required />
-                <button type="submit"
-                  className="w-full p-3 bg-yellow-700 hover:bg-yellow-600 rounded font-semibold transition">
-                  🪄 Send Reset Code
-                </button>
-              </form>
-            ) : (
-              <form onSubmit={handleResetConfirm} className="space-y-4">
-                <p className="text-sm text-gray-400">Enter code sent to {email}</p>
-                <input type="text" placeholder="e.g. 2000a" value={resetCode}
-                  onChange={e => setResetCode(e.target.value)}
-                  className="w-full p-3 bg-gray-800 border border-gray-700 rounded text-white" required />
-                <button type="submit"
-                  className="w-full p-3 bg-yellow-700 hover:bg-yellow-600 rounded font-semibold transition">
-                  🐉 Verify Code
-                </button>
-              </form>
-            )}
-            <p className="text-center mt-4">
-              <button onClick={() => { setMode('login'); setResetCode(''); }}
-                className="text-green-400 hover:underline text-sm">Back to Sign In</button>
+              <button onClick={() => setMode('reset')} className="text-gray-400 hover:underline text-sm">Forgot password?</button>
             </p>
           </>
         )}
 
-        {message && (
-          <p className="mt-4 p-3 bg-green-900 text-green-300 rounded text-sm animate-pulse">{message}</p>
-        )}
-        {error && (
-          <p className="mt-4 p-3 bg-red-900 text-red-300 rounded text-sm animate-shake">{error}</p>
-        )}
-
-        {/* Success firework */}
+        {message && <p className="mt-4 p-3 bg-green-900 text-green-300 rounded text-sm animate-pulse">{message}</p>}
+        {error && <p className="mt-4 p-3 bg-red-900 text-red-300 rounded text-sm animate-shake">{error}</p>}
         {loginSuccess && (
           <div className="mt-4 text-center animate-bounce">
             <p className="text-2xl">🔥🐉🔥</p>
