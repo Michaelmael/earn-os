@@ -1,5 +1,6 @@
-// Email sending utility
-// For production, sign up at https://resend.com (free tier: 100 emails/day)
+import { Resend } from 'resend';
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 const verificationCodes: Map<string, { code: string; expires: number }> = new Map();
 
@@ -10,7 +11,7 @@ export function generateVerificationCode(): string {
 export function storeVerificationCode(email: string, code: string): void {
   verificationCodes.set(email.toLowerCase(), {
     code,
-    expires: Date.now() + 10 * 60 * 1000, // 10 minutes
+    expires: Date.now() + 10 * 60 * 1000,
   });
 }
 
@@ -27,35 +28,47 @@ export function verifyCode(email: string, code: string): boolean {
 }
 
 export async function sendVerificationEmail(email: string, code: string): Promise<boolean> {
-  // In production, use Resend API
-  // For now, log to console and return success
-  console.log(`\n========================================`);
-  console.log(`VERIFICATION CODE for ${email}: ${code}`);
-  console.log(`========================================\n`);
-  
-  // To send real emails, uncomment this and add your Resend API key:
-  /*
   try {
-    const resend = new Resend(process.env.RESEND_API_KEY);
     await resend.emails.send({
-      from: 'EarnOS <noreply@earnos.xyz>',
+      from: 'EarnOS <earnos.noreply@gmail.com>',
       to: email,
-      subject: 'Verify your EarnOS account',
-      html: `<h1>Welcome to EarnOS</h1><p>Your verification code is: <strong>${code}</strong></p><p>This code expires in 10 minutes.</p>`,
+      subject: '🐉 Verify your EarnOS account',
+      html: `
+        <div style="background:#0f172a; color:#fff; padding:40px; font-family:Arial; text-align:center;">
+          <h1 style="color:#4ade80;">🐉 EarnOS</h1>
+          <p style="font-size:18px;">Welcome to the lair. Your verification code is:</p>
+          <h2 style="font-size:48px; letter-spacing:10px; color:#facc15;">${code}</h2>
+          <p style="color:#94a3b8;">This code expires in 10 minutes.</p>
+          <p style="color:#64748b; font-size:12px; margin-top:40px;">The dragon guards your crypto wealth.</p>
+        </div>
+      `,
     });
     return true;
   } catch (error) {
     console.error('Email send failed:', error);
     return false;
   }
-  */
-  
-  return true;
 }
 
 export async function sendResetEmail(email: string, code: string): Promise<boolean> {
-  console.log(`\n========================================`);
-  console.log(`RESET CODE for ${email}: ${code}`);
-  console.log(`========================================\n`);
-  return true;
+  try {
+    await resend.emails.send({
+      from: 'EarnOS <earnos.noreply@gmail.com>',
+      to: email,
+      subject: '🪄 Reset your EarnOS password',
+      html: `
+        <div style="background:#0f172a; color:#fff; padding:40px; font-family:Arial; text-align:center;">
+          <h1 style="color:#4ade80;">🐉 EarnOS</h1>
+          <p style="font-size:18px;">Password reset code:</p>
+          <h2 style="font-size:48px; letter-spacing:10px; color:#facc15;">${code}</h2>
+          <p style="color:#94a3b8;">This code expires in 15 minutes.</p>
+          <p style="color:#64748b; font-size:12px; margin-top:40px;">If you didn't request this, ignore this email.</p>
+        </div>
+      `,
+    });
+    return true;
+  } catch (error) {
+    console.error('Email send failed:', error);
+    return false;
+  }
 }
