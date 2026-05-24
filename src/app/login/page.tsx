@@ -1,217 +1,142 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import {
+  createUser, loginUser, adminLogin, verifyUserEmail,
+  generateResetCode, storeResetCode, verifyResetCode,
+  findUser, storeVerificationCode, verifyCode
+} from '@/lib/auth';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [mode, setMode] = useState<'login' | 'signup' | 'verify' | 'reset'>('login');
   const [isAdmin, setIsAdmin] = useState(false);
-  const [resetCode, setResetCode] = useState('');
-  const [verificationCode, setVerificationCode] = useState('');
+  const [resetCodeInput, setResetCodeInput] = useState('');
+  const [verificationInput, setVerificationInput] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const [dragonPos, setDragonPos] = useState({ x: 0, y: 0 });
-  const [breathingFire, setBreathingFire] = useState(false);
-  const [loginSuccess, setLoginSuccess] = useState(false);
   const router = useRouter();
 
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      setDragonPos({ x: e.clientX, y: e.clientY });
-    };
-    window.addEventListener('mousemove', handleMouseMove);
-    return () => window.removeEventListener('mousemove', handleMouseMove);
-  }, []);
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setMessage(''); setError('');
 
     if (mode === 'login') {
-      const url = isAdmin ? '/api/auth/admin-login' : '/api/auth/login';
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        localStorage.setItem('earnos_user', JSON.stringify(data.user));
-        setLoginSuccess(true);
-        setBreathingFire(true);
-        setTimeout(() => {
-          router.push(data.user.isAdmin ? '/admin' : '/');
-        }, 1500);
+      const result = isAdmin ? adminLogin(email, password) : loginUser(email, password);
+      if (result.success && result.user) {
+        localStorage.setItem('earnos_user', JSON.stringify({ email: result.user.email, isAdmin: result.user.isAdmin }));
+        router.push(result.user.isAdmin ? '/admin' : '/');
       } else {
-        setError(data.error);
-        if (data.error?.includes('verify')) setMode('verify');
+        setError(result.error || 'Login failed');
       }
     } else if (mode === 'signup') {
-      const res = await fetch('/api/auth/signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setMessage('Verification code sent! Check console or email.');
+      if (password.length < 5) { setError('Password must be at least 5 characters'); return; }
+      const result = createUser(email, password);
+      if (result.success) {
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        storeVerificationCode(email, code);
+        setMessage(`Verification code: ${code}`);
         setMode('verify');
       } else {
-        setError(data.error);
+        setError(result.error || 'Signup failed');
       }
     }
   };
 
-  const handleVerifyEmail = async (e: React.FormEvent) => {
+  const handleVerify = (e: React.FormEvent) => {
     e.preventDefault(); setMessage(''); setError('');
-    const res = await fetch('/api/auth/verify-email', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, code: verificationCode }),
-    });
-    const data = await res.json();
-    if (data.success) {
+    const valid = verifyCode(email, verificationInput);
+    if (valid) {
+      verifyUserEmail(email);
       setMessage('Email verified! You can now log in.');
-      setMode('login');
-      setVerificationCode('');
+      setTimeout(() => setMode('login'), 1000);
     } else {
-      setError(data.error);
+      setError('Invalid or expired code');
     }
   };
 
-  const handleResetRequest = async (e: React.FormEvent) => {
+  const handleResetRequest = (e: React.FormEvent) => {
     e.preventDefault(); setMessage(''); setError('');
-    const res = await fetch('/api/auth/reset-request', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email }),
-    });
-    const data = await res.json();
-    if (data.success) setMessage(`Reset code: ${data.code}`);
+    const user = findUser(email);
+    if (!user) { setMessage('If email exists, code sent.'); return; }
+    const code = generateResetCode();
+    storeResetCode(email, code);
+    setMessage(`Reset code: ${code}`);
+    setResetCodeInput('');
   };
 
-  const handleResetConfirm = async (e: React.FormEvent) => {
+  const handleResetConfirm = (e: React.FormEvent) => {
     e.preventDefault(); setMessage(''); setError('');
-    const res = await fetch('/api/auth/reset-confirm', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, code: resetCode }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      setMessage('Code verified! Log in with your new password.');
+    const valid = verifyResetCode(email, resetCodeInput);
+    if (valid) {
+      setMessage('Code verified! You can now log in.');
       setMode('login');
-      setResetCode('');
     } else {
-      setError(data.error);
+      setError('Invalid or expired code');
     }
   };
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center p-4 overflow-hidden cursor-none">
-      {/* Dragon */}
-      <div
-        className="fixed pointer-events-none z-50 transition-transform duration-75"
-        style={{ left: dragonPos.x - 30, top: dragonPos.y - 30, transform: `scale(${loginSuccess ? 1.5 : 1})` }}
-      >
-        <div className="text-5xl animate-bounce relative">
-          🐉
-          {breathingFire && (
-            <div className="absolute -right-16 top-2 animate-ping">
-              <span className="text-3xl">🔥</span>
-              <span className="text-3xl absolute -right-6 top-0">🔥</span>
-              <span className="text-2xl absolute -right-10 -top-2">🔥</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Embers */}
-      <div className="fixed inset-0 pointer-events-none">
-        {[...Array(20)].map((_, i) => (
-          <div key={i} className="absolute text-xl animate-pulse"
-            style={{ left: `${Math.random() * 100}%`, top: `${Math.random() * 100}%`, animationDelay: `${Math.random() * 3}s`, opacity: 0.3 }}>
-            {['✨', '💫', '⭐', '🔥', '💨'][i % 5]}
-          </div>
-        ))}
-      </div>
-
-      {/* Card */}
-      <div className="bg-gray-900 border border-gray-800 rounded-lg p-8 w-full max-w-md relative z-10 shadow-2xl shadow-green-900/20">
+    <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center p-4">
+      <div className="bg-gray-900 border border-gray-800 rounded-lg p-8 w-full max-w-md">
         <div className="text-center mb-6">
-          <span className="text-6xl">🐉</span>
-          <h1 className="text-3xl font-bold text-green-400 mt-2">EarnOS</h1>
-          <p className="text-gray-500 text-sm mt-1">The dragon guards your crypto wealth</p>
+          <h1 className="text-3xl font-bold text-green-400">EarnOS</h1>
+          <p className="text-gray-500 text-sm mt-1">Sign in to access your dashboard</p>
         </div>
 
         {mode === 'verify' ? (
           <>
             <h2 className="text-xl mb-4 text-center">Verify Email</h2>
-            <form onSubmit={handleVerifyEmail} className="space-y-4">
-              <p className="text-sm text-gray-400 text-center">Enter the 6-digit code sent to {email}</p>
-              <input type="text" placeholder="000000" value={verificationCode}
-                onChange={e => setVerificationCode(e.target.value)}
+            <form onSubmit={handleVerify} className="space-y-4">
+              <p className="text-sm text-gray-400 text-center">Enter the 6-digit code</p>
+              <input type="text" placeholder="000000" value={verificationInput}
+                onChange={e => setVerificationInput(e.target.value)}
                 className="w-full p-3 bg-gray-800 border border-gray-700 rounded text-white text-center text-2xl tracking-widest" required />
-              <button type="submit" className="w-full p-3 bg-green-700 hover:bg-green-600 rounded font-semibold transition">
-                ✅ Verify Email
-              </button>
+              <button type="submit" className="w-full p-3 bg-green-700 hover:bg-green-600 rounded font-semibold transition">Verify Email</button>
             </form>
-            <p className="text-center mt-4">
-              <button onClick={() => setMode('signup')} className="text-green-400 hover:underline text-sm">Back to Sign Up</button>
-            </p>
           </>
         ) : mode === 'reset' ? (
           <>
             <h2 className="text-xl mb-4 text-center">Reset Password</h2>
-            {!resetCode ? (
+            {!resetCodeInput ? (
               <form onSubmit={handleResetRequest} className="space-y-4">
-                <input type="email" placeholder="Email" value={email}
-                  onChange={e => setEmail(e.target.value)}
+                <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)}
                   className="w-full p-3 bg-gray-800 border border-gray-700 rounded text-white" required />
-                <button type="submit" className="w-full p-3 bg-yellow-700 hover:bg-yellow-600 rounded font-semibold transition">
-                  🪄 Send Reset Code
-                </button>
+                <button type="submit" className="w-full p-3 bg-yellow-700 hover:bg-yellow-600 rounded font-semibold transition">Send Reset Code</button>
               </form>
             ) : (
               <form onSubmit={handleResetConfirm} className="space-y-4">
-                <p className="text-sm text-gray-400">Enter code sent to {email}</p>
-                <input type="text" placeholder="e.g. 2000a" value={resetCode}
-                  onChange={e => setResetCode(e.target.value)}
+                <p className="text-sm text-gray-400">Enter reset code for {email}</p>
+                <input type="text" placeholder="e.g. 2000a" value={resetCodeInput} onChange={e => setResetCodeInput(e.target.value)}
                   className="w-full p-3 bg-gray-800 border border-gray-700 rounded text-white" required />
-                <button type="submit" className="w-full p-3 bg-yellow-700 hover:bg-yellow-600 rounded font-semibold transition">
-                  🐉 Verify Code
-                </button>
+                <button type="submit" className="w-full p-3 bg-yellow-700 hover:bg-yellow-600 rounded font-semibold transition">Verify Code</button>
               </form>
             )}
             <p className="text-center mt-4">
-              <button onClick={() => { setMode('login'); setResetCode(''); }} className="text-green-400 hover:underline text-sm">Back to Sign In</button>
+              <button onClick={() => { setMode('login'); setResetCodeInput(''); }} className="text-green-400 hover:underline text-sm">Back to Sign In</button>
             </p>
           </>
         ) : (
           <>
             <h2 className="text-xl mb-4 text-center">
-              {isAdmin ? '🔥 Admin Lair' : mode === 'signup' ? 'Join the Hoard' : 'Enter the Lair'}
+              {isAdmin ? 'Admin Login' : mode === 'signup' ? 'Create Account' : 'Sign In'}
             </h2>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <input type="email" placeholder="Email" value={email}
-                onChange={e => setEmail(e.target.value)}
-                className="w-full p-3 bg-gray-800 border border-gray-700 rounded text-white focus:border-green-500 focus:outline-none transition" required />
-              <input type="password" placeholder={mode === 'signup' ? 'Password (min 5 chars)' : 'Password'}
-                value={password} onChange={e => setPassword(e.target.value)}
-                className="w-full p-3 bg-gray-800 border border-gray-700 rounded text-white focus:border-green-500 focus:outline-none transition" required />
+              <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)}
+                className="w-full p-3 bg-gray-800 border border-gray-700 rounded text-white" required />
+              <input type="password" placeholder="Password (min 5 chars)" value={password} onChange={e => setPassword(e.target.value)}
+                className="w-full p-3 bg-gray-800 border border-gray-700 rounded text-white" required />
               <button type="submit" className="w-full p-3 bg-green-700 hover:bg-green-600 rounded font-semibold transition text-lg">
-                {mode === 'signup' ? '🐣 Hatch Account' : '🐉 Enter Lair'}
+                {mode === 'signup' ? 'Create Account' : 'Sign In'}
               </button>
             </form>
             <div className="flex justify-between mt-4 text-sm">
-              <button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')}
-                className="text-green-400 hover:underline">
+              <button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')} className="text-green-400 hover:underline">
                 {mode === 'login' ? 'Create account' : 'Already have account?'}
               </button>
-              <button onClick={() => setIsAdmin(!isAdmin)}
-                className="text-yellow-400 hover:underline">
+              <button onClick={() => setIsAdmin(!isAdmin)} className="text-yellow-400 hover:underline">
                 {isAdmin ? 'User login' : 'Admin?'}
               </button>
             </div>
@@ -221,14 +146,8 @@ export default function LoginPage() {
           </>
         )}
 
-        {message && <p className="mt-4 p-3 bg-green-900 text-green-300 rounded text-sm animate-pulse">{message}</p>}
-        {error && <p className="mt-4 p-3 bg-red-900 text-red-300 rounded text-sm animate-shake">{error}</p>}
-        {loginSuccess && (
-          <div className="mt-4 text-center animate-bounce">
-            <p className="text-2xl">🔥🐉🔥</p>
-            <p className="text-green-400 font-bold">The dragon approves! Entering...</p>
-          </div>
-        )}
+        {message && <p className="mt-4 p-3 bg-green-900 text-green-300 rounded text-sm">{message}</p>}
+        {error && <p className="mt-4 p-3 bg-red-900 text-red-300 rounded text-sm">{error}</p>}
       </div>
     </main>
   );
