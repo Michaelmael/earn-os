@@ -34,24 +34,35 @@ export default function ArbitrageScanner() {
         for (const exchange of exchanges) {
           try {
             let url = '';
+            let price = 0;
+            
             if (exchange === 'binance') {
               url = `https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`;
+              const res = await fetch(url);
+              const data = await res.json();
+              price = parseFloat(data.price);
             } else if (exchange === 'kraken') {
               url = `https://api.kraken.com/0/public/Ticker?pair=${symbol.replace('USDT', 'USD')}`;
+              const res = await fetch(url);
+              const data = await res.json();
+              const result = data.result;
+              const pairKey = Object.keys(result)[0];
+              if (pairKey && result[pairKey]) {
+                price = parseFloat((result[pairKey] as any).c[0]);
+              }
             } else if (exchange === 'coinbase') {
               url = `https://api.coinbase.com/v2/prices/${symbol.replace('USDT', '-USD')}/spot`;
+              const res = await fetch(url);
+              const data = await res.json();
+              price = parseFloat(data.data.amount);
             } else if (exchange === 'bybit') {
               url = `https://api.bybit.com/v5/market/tickers?category=spot&symbol=${symbol}`;
+              const res = await fetch(url);
+              const data = await res.json();
+              if (data.result?.list?.[0]) {
+                price = parseFloat(data.result.list[0].lastPrice);
+              }
             }
-            
-            const response = await fetch(url);
-            const data = await response.json();
-            
-            let price = 0;
-            if (exchange === 'binance') price = parseFloat(data.price);
-            else if (exchange === 'kraken') price = parseFloat(Object.values(data.result)[0]?.c[0]);
-            else if (exchange === 'coinbase') price = parseFloat(data.data.amount);
-            else if (exchange === 'bybit') price = parseFloat(data.result.list[0].lastPrice);
             
             if (price > 0) {
               prices[symbol][exchange] = price;
