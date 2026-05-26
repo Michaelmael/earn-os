@@ -1,20 +1,40 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { verifyCode } from '@/lib/email';
-import { verifyUserEmail, findUser } from '@/lib/auth';
+import { NextResponse } from 'next/server';
+import Database from 'better-sqlite3';
+import path from 'path';
 
-export async function POST(request: NextRequest) {
-  const { email, code } = await request.json();
-  if (!email || !code) {
-    return NextResponse.json({ error: 'Email and code required' }, { status: 400 });
+const dbPath = path.join(process.cwd(), 'users.db');
+const db = new Database(dbPath);
+
+export async function POST(req: Request) {
+  try {
+    const { email, code } = await req.json();
+    
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as any;
+    
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+    
+    if (user.emailVerified === 1) {
+      return NextResponse.json({ error: 'Email already verified' }, { status: 400 });
+    }
+    
+    if (user.verificationCode !== code) {
+      return NextResponse.json({ error: 'Invalid verification code' }, { status: 400 });
+    }
+    
+    const now = new Date();
+    const expires = new Date(user.verificationCodeExpires);
+    
+    if (now > expires) {
+      return NextResponse.json({ error: 'Verification code expired. Please register again.' }, { status: 400 });
+    }
+    
+    db.prepare('UPDATE users SET emailVerified = 1, verificationCode = NULL WHERE email = ?').run(email);
+    
+    return NextResponse.json({ success: true, message: 'Email verified successfully!' });
+    
+  } catch (error) {
+    return NextResponse.json({ error: 'Verification failed' }, { status: 500 });
   }
-  const valid = verifyCode(email, code);
-  if (!valid) {
-    return NextResponse.json({ error: 'Invalid or expired code' }, { status: 400 });
-  }
-  const user = findUser(email);
-  if (!user) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 });
-  }
-  verifyUserEmail(email);
-  return NextResponse.json({ success: true, message: 'Email verified! You can now log in.', user: { email: user.email, isAdmin: user.isAdmin } });
 }

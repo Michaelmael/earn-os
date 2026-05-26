@@ -5,5 +5,14 @@
     "lastLogin": "2026-05-23T11:02:13.577Z",
     "visitCount": 1,
     "isAdmin": true
+  },
+  {
+    "email": "writers3804@gmail.com",
+    "password": "2477654324776543",
+    "verified": false,
+    "lastLogin": "2026-05-26T10:20:07.353Z",
+    "visitCount": 0,
+    "isAdmin": false,
+    "createdAt": "2026-05-26T10:20:07.353Z"
   }
 ]
